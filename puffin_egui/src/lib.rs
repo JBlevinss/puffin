@@ -196,8 +196,13 @@ impl AvailableFrames {
     }
 
     fn all_uniq(&self) -> Vec<Arc<FrameData>> {
-        let mut all = self.slowest.clone();
-        all.extend(self.recent.iter().cloned());
+        let mut all = self
+            .slowest
+            .iter()
+            .cloned()
+            .chain(self.recent.iter().cloned())
+            .collect::<Vec<_>>();
+
         all.sort_by_key(|frame| frame.frame_index());
         all.dedup_by_key(|frame| frame.frame_index());
         all
@@ -631,21 +636,17 @@ impl ProfilerUi {
 
         {
             let uniq = frames.all_uniq();
-            let mut bytes = 0;
-            let mut unpacked = 0;
-            for frame in &uniq {
-                bytes += frame.bytes_of_ram_used();
-                unpacked += frame.has_unpacked() as usize;
-            }
+            let stats = frame_view.stats();
+
             ui.label(format!(
                 "{} frames ({} unpacked) using approximately {:.1} MB.",
-                uniq.len(),
-                unpacked,
-                bytes as f64 * 1e-6
+                stats.frames(),
+                stats.unpacked_frames(),
+                stats.bytes_of_ram_used() as f64 * 1e-6
             ));
 
             if let Some(frame_view) = frame_view.as_mut() {
-                max_frames_ui(ui, frame_view);
+                max_frames_ui(ui, frame_view, &uniq);
                 if self.paused.is_none() {
                     max_num_latest_ui(ui, &mut self.max_num_latest);
                 }
@@ -835,13 +836,9 @@ fn format_time(nanos: NanoSecond) -> Option<String> {
     }
 }
 
-fn max_frames_ui(ui: &mut egui::Ui, frame_view: &mut FrameView) {
-    let uniq = frame_view.all_uniq();
-
-    let mut bytes = 0;
-    for frame in &uniq {
-        bytes += frame.bytes_of_ram_used();
-    }
+fn max_frames_ui(ui: &mut egui::Ui, frame_view: &mut FrameView, uniq: &Vec<Arc<FrameData>>) {
+    let stats = frame_view.stats();
+    let bytes = stats.bytes_of_ram_used();
 
     let frames_per_second = if let (Some(first), Some(last)) = (uniq.first(), uniq.last()) {
         let nanos = last.range_ns().1 - first.range_ns().0;
